@@ -1,0 +1,7 @@
+{
+  "name": "evaluation-form",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SDE-I Assessment form (static) + Notion relay serverless function, deployed on Vercel."
+}

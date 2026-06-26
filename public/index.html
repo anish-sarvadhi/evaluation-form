@@ -63,6 +63,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-prim
 .mode-card .ic{font-size:22px;}
 .mode-card h3{font-size:15px;font-weight:700;margin:8px 0 4px;}
 .mode-card span{font-size:12.5px;color:var(--text-secondary);}
+.pwrow{display:flex;gap:10px;max-width:420px;}
+.pwrow input{flex:1;font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);color:var(--text-primary);}
+.pwrow input:focus{outline:none;border-color:var(--accent-mid);box-shadow:0 0 0 3px var(--accent-light);}
+.pwerr{color:var(--red);font-size:12.5px;margin-top:8px;min-height:16px;}
+.pwback{margin-top:14px;background:none;border:none;color:var(--text-secondary);font-family:inherit;font-size:13px;cursor:pointer;}
+.pwback:hover{color:var(--text-primary);}
 /* Thank you */
 .thankyou{display:none;max-width:560px;margin:60px auto;padding:0 24px;text-align:center;}
 .thankyou.show{display:block;animation:fade .3s ease;}
@@ -107,9 +113,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-prim
     <button class="mode-card" id="pick-reviewer" type="button">
       <div class="ic">👀</div>
       <h3>I'm assessing someone on my team</h3>
-      <span>Reviewer assessment of an engineer you manage.</span>
+      <span>Reviewer assessment of an engineer you manage. Password required.</span>
     </button>
   </div>
+</div>
+
+<!-- Reviewer password gate -->
+<div class="modepick" id="pwgate" style="display:none;">
+  <h2>Reviewer access</h2>
+  <p class="lead">Enter the reviewer password to continue. Self-assessment doesn't need this.</p>
+  <div class="pwrow">
+    <input id="pw-input" type="password" autocomplete="current-password" placeholder="Reviewer password">
+    <button class="btn btn-primary" id="pw-go" type="button">Continue</button>
+  </div>
+  <p class="pwerr" id="pw-err"></p>
+  <button class="pwback" id="pw-back" type="button">← Back</button>
 </div>
 
 <div class="shell" id="shell" style="display:none;">
@@ -448,6 +466,7 @@ const SELF_SECTIONS=[
 
 /* ---- state ---- */
 let ROLE=null;            // "self" | "reviewer"
+let REVIEWER_PW="";       // verified reviewer password (server-checked)
 let SECTIONS=[];          // chosen wording set
 let QMETA={};
 const answers={}; const rendered={}; let step=0;
@@ -495,7 +514,34 @@ function buildForm(){
 }
 
 document.getElementById('pick-self').addEventListener('click',()=>chooseMode('self'));
-document.getElementById('pick-reviewer').addEventListener('click',()=>chooseMode('reviewer'));
+document.getElementById('pick-reviewer').addEventListener('click',()=>{
+  document.getElementById('modepick').style.display='none';
+  document.getElementById('pw-err').textContent='';
+  document.getElementById('pwgate').style.display='block';
+  document.getElementById('pw-input').focus();
+});
+document.getElementById('pw-back').addEventListener('click',()=>{
+  document.getElementById('pwgate').style.display='none';
+  document.getElementById('modepick').style.display='block';
+});
+async function verifyReviewer(){
+  const pw=document.getElementById('pw-input').value;
+  const err=document.getElementById('pw-err');const go=document.getElementById('pw-go');
+  if(!pw){err.textContent='Enter the password.';return;}
+  go.disabled=true;go.innerHTML='<span class="spinner"></span>Checking…';err.textContent='';
+  try{
+    const res=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const b=await res.json().catch(()=>({}));
+    if(res.ok&&b.ok){
+      REVIEWER_PW=pw;
+      document.getElementById('pwgate').style.display='none';
+      chooseMode('reviewer');
+    } else { err.textContent='Incorrect password. Try again.'; }
+  }catch(e){ err.textContent='Could not verify (network error). Try again.'; }
+  go.disabled=false;go.innerHTML='Continue';
+}
+document.getElementById('pw-go').addEventListener('click',verifyReviewer);
+document.getElementById('pw-input').addEventListener('keydown',e=>{if(e.key==='Enter')verifyReviewer();});
 
 body.addEventListener('click',e=>{
   const opt=e.target.closest('.opt');if(!opt)return;
@@ -557,6 +603,7 @@ function collect(){
     cycle:document.getElementById('m-cycle').value,
     engineer:document.getElementById('m-engineer').value.trim(),
     reviewer:ROLE==='reviewer'?document.getElementById('m-reviewer').value:'',
+    password:ROLE==='reviewer'?REVIEWER_PW:undefined,
     submittedAt:new Date().toISOString(),
     answers:{...answers},
     answersText

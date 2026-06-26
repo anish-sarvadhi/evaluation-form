@@ -27,6 +27,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Missing answers" });
 
   const role = d.role === "self" ? "self" : "reviewer";
+
+  // Reviewer submissions require the shared password (env-only, never in client).
+  if (role === "reviewer") {
+    const expected = process.env.REVIEWER_PASSWORD || "";
+    if (!expected || String(d.password || "") !== expected)
+      return res.status(401).json({ ok: false, error: "Invalid reviewer password" });
+  }
+
   const email = String(d.engineerEmail || "").trim().toLowerCase();
   const cycle = String(d.cycle || "").trim();
   if (!email) return res.status(400).json({ ok: false, error: "Missing engineer email" });

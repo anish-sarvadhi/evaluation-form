@@ -53,6 +53,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-prim
 .opt.sel .radio::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--accent);}
 .opt .desc{font-size:13px;color:var(--text-secondary);line-height:1.45;}
 .opt.sel .desc{color:var(--text-primary);}
+/* Mode picker */
+.modepick{max-width:780px;margin:40px auto;padding:0 24px 120px;}
+.modepick h2{font-size:20px;font-weight:700;margin-bottom:4px;}
+.modepick .lead{font-size:13px;color:var(--text-secondary);margin-bottom:20px;}
+.mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.mode-card{text-align:left;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);padding:20px;cursor:pointer;transition:all .12s;box-shadow:var(--shadow-sm);font-family:inherit;color:var(--text-primary);}
+.mode-card:hover{border-color:var(--accent-mid);box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.mode-card .ic{font-size:22px;}
+.mode-card h3{font-size:15px;font-weight:700;margin:8px 0 4px;}
+.mode-card span{font-size:12.5px;color:var(--text-secondary);}
 /* Thank you */
 .thankyou{display:none;max-width:560px;margin:60px auto;padding:0 24px;text-align:center;}
 .thankyou.show{display:block;animation:fade .3s ease;}
@@ -74,20 +84,45 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-prim
 .btn-primary:not(:disabled):hover{background:var(--accent-mid);}
 .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;}
 @keyframes spin{to{transform:rotate(360deg);}}
-@media(max-width:560px){.meta{grid-template-columns:1fr;}}
+@media(max-width:560px){.meta{grid-template-columns:1fr;}.mode-cards{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
 <header class="hero">
   <div class="hero-badge"><span class="dot"></span> Sarvadhi · Dumbledore</div>
   <h1>SDE-I Assessment Form</h1>
-  <p>20 questions across 8 areas · answer each step to continue</p>
+  <p id="hero-sub">20 questions across 8 areas · answer each step to continue</p>
 </header>
 
-<div class="shell" id="shell">
+<!-- Step 0: who is filling this out -->
+<div class="modepick" id="modepick">
+  <h2>Who's filling this out?</h2>
+  <p class="lead">Pick how you're completing this assessment — the questions are worded to match.</p>
+  <div class="mode-cards">
+    <button class="mode-card" id="pick-self" type="button">
+      <div class="ic">🧑‍💻</div>
+      <h3>I'm assessing myself</h3>
+      <span>Self-reflection on your own work. Questions are in first person ("I…").</span>
+    </button>
+    <button class="mode-card" id="pick-reviewer" type="button">
+      <div class="ic">👀</div>
+      <h3>I'm assessing someone on my team</h3>
+      <span>Reviewer assessment of an engineer you manage.</span>
+    </button>
+  </div>
+</div>
+
+<div class="shell" id="shell" style="display:none;">
   <div class="meta">
-    <div class="field"><label>Engineer Name *</label><input id="m-engineer" placeholder="e.g. Riya Shah"></div>
-    <div class="field"><label>Reviewer *</label>
+    <div class="field"><label>Review Cycle *</label>
+      <select id="m-cycle">
+        <option value="" selected disabled>Select cycle</option>
+        <option>Q1 2026</option><option>Q2 2026</option><option>Q3 2026</option><option>Q4 2026</option>
+      </select>
+    </div>
+    <div class="field"><label id="lbl-email">Engineer's work email *</label><input id="m-email" type="email" autocomplete="email" placeholder="e.g. riya@sarvadhi.com"></div>
+    <div class="field"><label id="lbl-name">Engineer name *</label><input id="m-engineer" placeholder="e.g. Riya Shah"></div>
+    <div class="field" id="field-reviewer"><label>Reviewer *</label>
       <select id="m-reviewer">
         <option value="" selected disabled>Select reviewer</option>
         <option>Paras</option><option>Hemal</option><option>Mayur</option><option>Anish</option>
@@ -114,7 +149,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-prim
   </div>
 </div>
 
-<div class="actionbar" id="actionbar">
+<div class="actionbar" id="actionbar" style="display:none;">
   <div class="inner">
     <div class="status" id="status">Step 1 of 8.</div>
     <button class="btn btn-ghost" id="btn-back" style="display:none;">Back</button>
@@ -130,7 +165,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text-prim
    ============================================================ */
 const WEBHOOK_URL = "/api/submit";
 
-const SECTIONS=[
+/* Reviewer-voice questions (third person). */
+const REVIEWER_SECTIONS=[
   {key:"S1",name:"Technical Proficiency",weight:0.25,qs:[
     {id:"Q1",text:"Can this engineer read and explain the code they ship — whether they wrote it or AI generated it?",opts:[
       "Explains any function's logic clearly when asked. Spots errors in AI output before I review it",
@@ -205,7 +241,7 @@ const SECTIONS=[
       "Learns only when instructed. Sticks to what they know. Doesn't explore or suggest anything new",
       "No learning initiative. Uses the same approaches regardless of better options. Resistant to new things"]},
     {id:"Q12",text:"When this engineer estimates a task — how close is the estimate to how long the work actually takes?",opts:[
-      "Within \u00b120% consistently. Breaks tasks down before estimating and updates if scope changes",
+      "Within ±20% consistently. Breaks tasks down before estimating and updates if scope changes",
       "Off by 30-40% sometimes but improving. Gives estimates without being asked",
       "Tasks often take 1.5-2x longer. Gives estimates when asked but doesn't volunteer them",
       "Off by 2-3x regularly. Doesn't think about time before starting",
@@ -269,24 +305,197 @@ const SECTIONS=[
   ]}
 ];
 
-const QMETA={}; SECTIONS.forEach(s=>s.qs.forEach(q=>QMETA[q.id]={section:s.name,text:q.text,opts:q.opts}));
+/* Self-voice questions (first person) — 1:1 mirror of REVIEWER_SECTIONS:
+   same section/question/option order and the same scoring. */
+const SELF_SECTIONS=[
+  {key:"S1",name:"Technical Proficiency",weight:0.25,qs:[
+    {id:"Q1",text:"Can I read and explain the code I ship — whether I wrote it or AI generated it?",opts:[
+      "I explain any function's logic clearly when asked. I spot errors in AI output before it's reviewed",
+      "I read and trace code independently. I understand data structures, control flow, and patterns",
+      "I understand basics — loops, functions, conditionals — but need help on complex logic",
+      "I know syntax but can't explain what a function does without running it first",
+      "I can't read code — I copy AI output without knowing what it does"]},
+    {id:"Q2",text:"When I'm assigned a task with a written BRD or user story, do I understand what to build without it being re-explained?",opts:[
+      "I read the spec, spot missing edge cases others didn't catch, and ask clarifying questions before starting",
+      "I understand requirements correctly on first read and validate against acceptance criteria independently",
+      "I follow requirements as written, but occasionally miss an implied edge case from the spec",
+      "I need someone to walk through the requirement verbally — the written spec alone isn't enough",
+      "I misinterpret specs regularly — I build the wrong thing, and it's discovered during review"]},
+    {id:"Q3",text:"Do I use AI agents as my primary workflow to write, validate, and deliver code every day?",opts:[
+      "I write clear specs for AI, review output critically, and deliver production-ready code with minimal manual edits",
+      "I use AI independently for most tasks and validate and refactor output before submitting the PR",
+      "I use AI but occasionally need guidance on how to prompt or which tool to pick",
+      "I need direction on which AI tool to use, my prompts are vague, and output requires major rework",
+      "I don't use AI — I write code manually or use it only for trivial autocomplete"]}
+  ]},
+  {key:"S2",name:"Tool & Platform Proficiency",weight:0.15,qs:[
+    {id:"Q4",text:"Do I keep tasks, time tracking, and progress updated in the PM tool without being chased?",opts:[
+      "I update task status daily, track time accurately, and write clear progress notes — no one needs to ask",
+      "I update 4/5 days, timesheets mostly on time, progress notes present and useful",
+      "I update 3/5 days, timesheets sometimes late, and someone occasionally checks in for status",
+      "I update only when asked, timesheets frequently missing, and I'm chased for task status weekly",
+      "I don't update tasks or log time — others find out what I'm doing from someone else"]},
+    {id:"Q5",text:"Do I use HRMS properly — attendance logged daily, leaves applied in advance, acknowledgments done on time?",opts:[
+      "I log attendance daily without gaps, apply leaves well in advance, and complete all acknowledgments on time",
+      "I use HRMS correctly with rare misses — attendance consistent, leaves applied before taking",
+      "I'm generally compliant but occasionally forget to log attendance or apply leave after the fact",
+      "My HRMS compliance needs regular reminders — attendance gaps, leaves applied late",
+      "I don't use HRMS — attendance not logged, leaves taken without applying"]},
+    {id:"Q6",text:"Do I know how to use agentic engineering platforms — skills, hooks, commands, rules, and plugins — to write efficient code?",opts:[
+      "I configure custom skills, hooks, and rules for projects. I discover useful plugins and the team copies my setup",
+      "I use skills, commands, and rules daily. I try new plugins and share what works",
+      "I run standard commands and follow team rules, but don't explore beyond what was shown in training",
+      "I type basic prompts only. I don't use skills, hooks, or rules even when the team has documented them",
+      "I use the platform like a search engine. I'm not aware that skills, commands, or workflows exist"]}
+  ]},
+  {key:"S3",name:"Delivery Excellence",weight:0.15,qs:[
+    {id:"Q7",text:"When I pick up a task, do I understand what to build — or is it found later that I built the wrong thing?",opts:[
+      "I read requirements carefully, ask clarifying questions before starting, and deliver exactly what was asked",
+      "I understand correctly most of the time, ask when unclear, with occasional minor misses",
+      "I get the general idea right but miss edge cases — I need one round of correction",
+      "I start coding before understanding and frequently build the wrong thing — rework is common",
+      "I don't read or understand requirements — I deliver work that doesn't match, repeatedly"]},
+    {id:"Q8",text:"Do I finish my committed tasks on time — or is incomplete work regularly found at the end of the cycle?",opts:[
+      "I complete all committed tasks on time, flag risks early, and never surprise anyone at review",
+      "I finish most on time; occasionally one carries over but I communicate it before the deadline",
+      "I complete about half on time; some slip without early warning — delays show up at review",
+      "I regularly carry over multiple tasks and don't flag delays until asked",
+      "I almost never finish committed tasks — my estimates aren't trusted anymore"]},
+    {id:"Q9",text:"Before I mark a task as done, have I tested it myself — or does QA find the obvious issues?",opts:[
+      "I test every feature end-to-end including edge cases before marking done. QA rarely finds issues",
+      "I test the happy path and key scenarios consistently. QA finds only edge cases, not obvious bugs",
+      "I do basic testing — I catch obvious issues but miss edge cases regularly",
+      "I test only when reminded. QA frequently finds issues a quick self-check would have caught",
+      "I don't test my own work. I mark tasks done without any verification"]}
+  ]},
+  {key:"S4",name:"Productivity & Time Mgmt",weight:0.15,qs:[
+    {id:"Q10",text:"Do I use my working hours effectively — staying productive, planning ahead, and never sitting idle between tasks?",opts:[
+      "I'm always productive — I plan next steps while current work runs, review PRs in gaps, prep test scenarios. No idle time",
+      "I find useful work during gaps without being told. I rarely sit waiting between tasks",
+      "I'm productive on a task but go quiet between them. I don't naturally fill gaps",
+      "I have noticeable idle time during the day. I wait for the next assignment instead of finding useful work",
+      "My output doesn't match my hours. Long gaps with no progress despite conversations about it"]},
+    {id:"Q11",text:"Do I learn new things and bring fresh ideas, tools, or approaches to the team?",opts:[
+      "I regularly bring new tools, techniques, or approaches the team hasn't tried. My learning directly improves how we work",
+      "I explore new things independently and share useful findings with the team",
+      "I learn what's needed for current tasks. I'm open to new approaches when others suggest them",
+      "I learn only when instructed. I stick to what I know and don't explore or suggest anything new",
+      "I show no learning initiative. I use the same approaches regardless of better options and resist new things"]},
+    {id:"Q12",text:"When I estimate a task — how close is my estimate to how long the work actually takes?",opts:[
+      "Within ±20% consistently. I break tasks down before estimating and update if scope changes",
+      "Off by 30-40% sometimes but improving. I give estimates without being asked",
+      "Tasks often take 1.5-2x longer. I give estimates when asked but don't volunteer them",
+      "Off by 2-3x regularly. I don't think about time before starting",
+      "I can't estimate. Random numbers or \"I don't know.\" My timelines can't be planned around"]}
+  ]},
+  {key:"S5",name:"Learning & Adaptability",weight:0.15,qs:[
+    {id:"Q13",text:"Do I use AI coding tools as my default way of working — or do I still code manually and treat AI as optional?",opts:[
+      "AI tools are my first instinct for every task. My productivity is visibly higher than manual coding would allow",
+      "I use AI daily for most tasks. I occasionally fall back to manual but AI is clearly my default",
+      "I use AI when reminded or for specific tasks. My default habit is still manual coding",
+      "I try AI occasionally but don't trust the output. I revert to manual most of the time",
+      "I avoid AI tools entirely or use them so rarely there's no visible impact"]},
+    {id:"Q14",text:"When I'm given feedback in a review or standup — does it stick, or does the same thing come up next month?",opts:[
+      "I apply feedback immediately and permanently. I also pick up improvements on my own",
+      "I apply it consistently. I occasionally need one reminder on complex changes but the pattern improves",
+      "I acknowledge and try, but it takes multiple reminders before it becomes a habit",
+      "I listen but don't change. The same points are repeated every review cycle",
+      "I don't absorb feedback. Same mistakes, same gaps, no visible improvement"]}
+  ]},
+  {key:"S6",name:"Communication & Collaboration",weight:0.05,qs:[
+    {id:"Q15",text:"When I give a status update — does the other person walk away knowing exactly where things stand?",opts:[
+      "I proactively update; no follow-up needed",
+      "I'm mostly proactive, with occasional gaps",
+      "I update when asked, but don't maintain communication",
+      "I rarely provide useful updates even when asked",
+      "I give no meaningful updates at all"]},
+    {id:"Q16",text:"When I'm sent an email, message, or announcement — do I read it and respond?",opts:[
+      "I read and respond within hours. I acknowledge announcements and act on items without reminders",
+      "I respond same day. I acknowledge announcements and occasionally miss low-priority messages",
+      "I respond eventually but late. I read announcements but don't acknowledge, and I miss action items",
+      "I frequently don't respond unless pinged again. Action items need to be separately assigned to me",
+      "I don't read or respond. People have learned to tell me directly"]}
+  ]},
+  {key:"S7",name:"Ownership & Integrity",weight:0.05,qs:[
+    {id:"Q17",text:"When I'm assigned a task — do I own the outcome, or does someone else drive it to completion?",opts:[
+      "I can be assigned and forgotten. I clarify upfront, flag risks early, deliver complete. If blocked, I raise it within an hour with a solution",
+      "I handle most tasks start to finish. I occasionally need a nudge but don't leave things half-done",
+      "I do the work but need periodic check-ins. Without being asked, tasks might sit at 80% for days",
+      "My tasks stall when no one's watching. I wait for direction instead of pushing through obstacles",
+      "Assigning me a task means someone finishes half of it. My work is routinely incomplete or dropped"]},
+    {id:"Q18",text:"When I'm behind or have made a mistake — do I say so straight, or is it found out later?",opts:[
+      "I proactively admit mistakes and delays. I take responsibility without blaming others",
+      "I tell the truth when asked. I don't volunteer every time but I never hide",
+      "I admit it when confronted but don't volunteer. Sometimes I say \"almost done\" when I haven't started",
+      "I downplay problems. They're found out from the code, client, or a teammate — not from me",
+      "I actively hide mistakes. What I say and what's actually happening are consistently different"]}
+  ]},
+  {key:"S8",name:"Professional Discipline",weight:0.05,qs:[
+    {id:"Q19",text:"Do I follow defined SOPs, checklists, and conventions without reminders?",opts:[
+      "I follow every SOP and convention by default. I flag when a process is outdated or could be improved",
+      "I follow processes consistently with minimal supervision. Rare deviations that I self-correct",
+      "I follow SOPs with reasonable effort but need periodic reminders on specific steps",
+      "I follow processes only when instructed. I frequently skip steps under deadline pressure",
+      "I don't follow SOPs despite repeated guidance. I create inconsistency that affects the team"]},
+    {id:"Q20",text:"How consistently do I demonstrate respectful and professional conduct in meetings and team interactions?",opts:[
+      "I make meetings better by being there. I listen, respond thoughtfully, and juniors feel comfortable around me",
+      "I'm professional in almost every interaction. Bad moments are rare and self-corrected",
+      "I'm generally fine but I've been noticed phone-checking or occasionally cutting someone off",
+      "I've been talked to about conduct at least once — dismissive, argumentative, or disengaged",
+      "It's a recurring issue. Teammates have complained. Feedback given multiple times, no change"]}
+  ]}
+];
+
+/* ---- state ---- */
+let ROLE=null;            // "self" | "reviewer"
+let SECTIONS=[];          // chosen wording set
+let QMETA={};
 const answers={}; const rendered={}; let step=0;
 function shuffle(a){const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
 
 const body=document.getElementById('step-body');
-SECTIONS.forEach((s,si)=>{
-  const p=document.createElement('div');p.className='panel'+(si===0?' active':'');p.id='panel-'+si;
-  s.qs.forEach(q=>{
-    const shuf=shuffle(q.opts.map((d,i)=>({score:5-i,desc:d})));rendered[q.id]=shuf;
-    const qd=document.createElement('div');qd.className='q';
-    let html=`<div class="q-head"><span class="q-num">${q.id}</span><span class="q-text">"${q.text}"</span></div>`;
-    shuf.forEach((o,idx)=>{html+=`<div class="opt" data-q="${q.id}" data-idx="${idx}"><span class="radio"></span><span class="desc">${o.desc}</span></div>`;});
-    qd.innerHTML=html;p.appendChild(qd);
+
+function chooseMode(role){
+  ROLE=role;
+  SECTIONS = role==='self' ? SELF_SECTIONS : REVIEWER_SECTIONS;
+  QMETA={}; SECTIONS.forEach(s=>s.qs.forEach(q=>QMETA[q.id]={section:s.name,text:q.text,opts:q.opts}));
+
+  // configure meta fields per mode
+  document.getElementById('field-reviewer').style.display = role==='reviewer' ? 'flex' : 'none';
+  document.getElementById('lbl-email').textContent = role==='self' ? 'Your work email *' : "Engineer's work email *";
+  document.getElementById('lbl-name').textContent  = role==='self' ? 'Your name *' : 'Engineer name *';
+  document.getElementById('m-engineer').placeholder = role==='self' ? 'e.g. your full name' : 'e.g. Riya Shah';
+  document.getElementById('hero-sub').textContent = (role==='self'
+    ? 'Self-assessment · 20 questions across 8 areas'
+    : 'Reviewer assessment · 20 questions across 8 areas');
+
+  buildForm();
+  document.getElementById('modepick').style.display='none';
+  document.getElementById('shell').style.display='block';
+  document.getElementById('actionbar').style.display='block';
+  render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function buildForm(){
+  body.innerHTML='';
+  SECTIONS.forEach((s,si)=>{
+    const p=document.createElement('div');p.className='panel'+(si===0?' active':'');p.id='panel-'+si;
+    s.qs.forEach(q=>{
+      const shuf=shuffle(q.opts.map((d,i)=>({score:5-i,desc:d})));rendered[q.id]=shuf;
+      const qd=document.createElement('div');qd.className='q';
+      let html=`<div class="q-head"><span class="q-num">${q.id}</span><span class="q-text">"${q.text}"</span></div>`;
+      shuf.forEach((o,idx)=>{html+=`<div class="opt" data-q="${q.id}" data-idx="${idx}"><span class="radio"></span><span class="desc">${o.desc}</span></div>`;});
+      qd.innerHTML=html;p.appendChild(qd);
+    });
+    body.appendChild(p);
   });
-  body.appendChild(p);
-});
-const dots=document.getElementById('dots');
-SECTIONS.forEach((s,si)=>{const d=document.createElement('div');d.className='dot-step';d.id='dot-'+si;dots.appendChild(d);});
+  const dots=document.getElementById('dots');dots.innerHTML='';
+  SECTIONS.forEach((s,si)=>{const d=document.createElement('div');d.className='dot-step';d.id='dot-'+si;dots.appendChild(d);});
+}
+
+document.getElementById('pick-self').addEventListener('click',()=>chooseMode('self'));
+document.getElementById('pick-reviewer').addEventListener('click',()=>chooseMode('reviewer'));
 
 body.addEventListener('click',e=>{
   const opt=e.target.closest('.opt');if(!opt)return;
@@ -295,11 +504,20 @@ body.addEventListener('click',e=>{
   opt.classList.add('sel');render();
 });
 document.getElementById('m-engineer').addEventListener('input',render);
+document.getElementById('m-email').addEventListener('input',render);
+document.getElementById('m-cycle').addEventListener('change',render);
 document.getElementById('m-reviewer').addEventListener('change',render);
 
 function secCount(s){let n=0;s.qs.forEach(q=>{if(answers[q.id])n++;});return n;}
 function totalAnswered(){return Object.keys(answers).length;}
 function secComplete(si){const s=SECTIONS[si];return secCount(s)===s.qs.length;}
+function emailOk(){const el=document.getElementById('m-email');return el.value.trim()!==''&&el.checkValidity();}
+function metaOk(){
+  const cycle=document.getElementById('m-cycle').value;
+  const name=document.getElementById('m-engineer').value.trim();
+  const reviewerOk = ROLE==='reviewer' ? !!document.getElementById('m-reviewer').value : true;
+  return cycle && emailOk() && name && reviewerOk;
+}
 
 function render(){
   const s=SECTIONS[step];
@@ -314,15 +532,15 @@ function render(){
   const submit=document.getElementById('btn-submit');
   submit.style.display=isLast?'inline-block':'none';
   document.getElementById('btn-next').disabled=!secComplete(step);
-  const engineer=document.getElementById('m-engineer').value.trim();
-  const reviewer=document.getElementById('m-reviewer').value;
-  const allDone=totalAnswered()===20&&engineer&&reviewer;
+  const allDone=totalAnswered()===20&&metaOk();
   submit.disabled=!allDone;
   const st=document.getElementById('status');st.className='status';
   if(isLast){
     if(allDone)st.textContent='All 20 answered. Ready to submit.';
     else if(totalAnswered()<20)st.textContent=`Answered ${totalAnswered()}/20 — complete every step.`;
-    else if(!engineer)st.textContent='Enter Engineer Name to submit.';
+    else if(!document.getElementById('m-cycle').value)st.textContent='Select a Review Cycle to submit.';
+    else if(!emailOk())st.textContent='Enter a valid work email to submit.';
+    else if(!document.getElementById('m-engineer').value.trim())st.textContent=(ROLE==='self'?'Enter your name to submit.':'Enter Engineer Name to submit.');
     else st.textContent='Select a Reviewer to submit.';
   } else st.textContent=secComplete(step)?`Step ${step+1} complete — continue.`:`Answer all ${s.qs.length} questions to continue.`;
 }
@@ -333,8 +551,16 @@ function selectedText(qid,score){return QMETA[qid].opts[5-score];}
 function collect(){
   let out=[];SECTIONS.forEach(s=>{out.push('【'+s.name+'】');s.qs.forEach(q=>out.push(q.id+' — '+selectedText(q.id,answers[q.id])));});
   let answersText=out.join('\n');if(answersText.length>1990)answersText=answersText.slice(0,1987)+'…';
-  return {engineer:document.getElementById('m-engineer').value.trim(),reviewer:document.getElementById('m-reviewer').value,
-    submittedAt:new Date().toISOString(),answers:{...answers},answersText};
+  return {
+    role:ROLE,
+    engineerEmail:document.getElementById('m-email').value.trim(),
+    cycle:document.getElementById('m-cycle').value,
+    engineer:document.getElementById('m-engineer').value.trim(),
+    reviewer:ROLE==='reviewer'?document.getElementById('m-reviewer').value:'',
+    submittedAt:new Date().toISOString(),
+    answers:{...answers},
+    answersText
+  };
 }
 
 document.getElementById('btn-submit').addEventListener('click',async()=>{
@@ -363,7 +589,6 @@ document.getElementById('btn-submit').addEventListener('click',async()=>{
     btn.disabled=false;btn.innerHTML='Submit';
   }
 });
-render();
 </script>
 </body>
 </html>
